@@ -1,37 +1,10 @@
-
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Collage 10x15</title>
-
-  <!-- React & ReactDOM -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <!-- Tailwind CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-
-  <style>
-    body { margin: 0; background: #050505; }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-
-  <script type="text/babel">
-
-const { useState, useRef } = React;
+import React, { useState, useRef } from 'react';
+import { Download, Trash2, ZoomIn, RefreshCw, Image as ImageIcon, Upload } from 'lucide-react';
 
 const CANVAS_WIDTH = 1200;
 const CANVAS_HEIGHT = 1800;
 
-function App() {
+const App = () => {
   const [photos, setPhotos] = useState([null, null, null, null]);
   const [transforms, setTransforms] = useState(
     Array(4).fill(0).map(() => ({ x: 0, y: 0, scale: 1, baseScale: 1 }))
@@ -50,51 +23,47 @@ function App() {
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const newPhotos = [...photos];
-        newPhotos[selectedIndex] = { src: event.target.result, width: img.width, height: img.height };
-        setPhotos(newPhotos);
-
-        const containerW = containerRefs[selectedIndex].current.offsetWidth;
-        const containerH = containerRefs[selectedIndex].current.offsetHeight;
-        const initialScale = calculateInitialScale(img.width, img.height, containerW, containerH);
-
-        setTransforms(prev => {
-          const next = [...prev];
-          next[selectedIndex] = { x: 0, y: 0, scale: initialScale, baseScale: initialScale };
-          return next;
-        });
+    if (file && selectedIndex !== null) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const newPhotos = [...photos];
+          newPhotos[selectedIndex] = { src: event.target.result, width: img.width, height: img.height };
+          setPhotos(newPhotos);
+          
+          const containerW = containerRefs[selectedIndex].current.offsetWidth;
+          const containerH = containerRefs[selectedIndex].current.offsetHeight;
+          const initialScale = calculateInitialScale(img.width, img.height, containerW, containerH);
+          
+          setTransforms(prev => {
+            const next = [...prev];
+            next[selectedIndex] = { x: 0, y: 0, scale: initialScale, baseScale: initialScale };
+            return next;
+          });
+        };
+        img.src = event.target.result;
       };
-      img.src = event.target.result;
-    };
-    reader.readAsDataURL(file);
+      reader.readAsDataURL(file);
+    }
     e.target.value = null;
   };
 
   const handleDrag = (index, e) => {
     setSelectedIndex(index);
     if (!photos[index]) return;
-
-    const startX = e.clientX;
-    const startY = e.clientY;
+    
+    const startX = e.clientX || e.touches?.[0]?.clientX;
+    const startY = e.clientY || e.touches?.[0]?.clientY;
     const initialPos = { x: transforms[index].x, y: transforms[index].y };
 
     const onMove = (moveEvent) => {
-      const currentX = moveEvent.clientX;
-      const currentY = moveEvent.clientY;
-
+      const currentX = moveEvent.clientX || moveEvent.touches?.[0]?.clientX;
+      const currentY = moveEvent.clientY || moveEvent.touches?.[0]?.clientY;
+      
       setTransforms(prev => {
         const next = [...prev];
-        next[index] = {
-          ...next[index],
-          x: initialPos.x + (currentX - startX),
-          y: initialPos.y + (currentY - startY)
-        };
+        next[index] = { ...next[index], x: initialPos.x + (currentX - startX), y: initialPos.y + (currentY - startY) };
         return next;
       });
     };
@@ -102,135 +71,195 @@ function App() {
     const onEnd = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onEnd);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onEnd);
     };
 
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onEnd);
+    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchend', onEnd);
   };
 
   const exportCollage = async () => {
     if (isExporting) return;
     setIsExporting(true);
 
-    const canvas = document.createElement('canvas');
-    canvas.width = CANVAS_WIDTH;
-    canvas.height = CANVAS_HEIGHT;
-    const ctx = canvas.getContext('2d');
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = CANVAS_WIDTH;
+      canvas.height = CANVAS_HEIGHT;
+      const ctx = canvas.getContext('2d');
+      
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i];
+        if (!photo) continue;
 
-    for (let i = 0; i < photos.length; i++) {
-      const photo = photos[i];
-      if (!photo) continue;
+        await new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            const col = i % 2; 
+            const row = Math.floor(i / 2);
+            const cellW = CANVAS_WIDTH / 2; 
+            const cellH = CANVAS_HEIGHT / 2;
+            const targetX = col * cellW; 
+            const targetY = row * cellH;
+            
+            ctx.save();
+            ctx.beginPath(); 
+            ctx.rect(targetX, targetY, cellW, cellH); 
+            ctx.clip();
+            
+            const t = transforms[i];
+            const uiToCanvasRatio = cellW / containerRefs[i].current.offsetWidth;
+            const drawW = photo.width * t.scale * uiToCanvasRatio;
+            const drawH = photo.height * t.scale * uiToCanvasRatio;
+            const centerX = targetX + cellW / 2 + (t.x * uiToCanvasRatio);
+            const centerY = targetY + cellH / 2 + (t.y * uiToCanvasRatio);
+            
+            ctx.drawImage(img, centerX - drawW / 2, centerY - drawH / 2, drawW, drawH);
+            ctx.restore();
+            resolve();
+          };
+          img.src = photo.src;
+        });
+      }
 
-      await new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-          const col = i % 2;
-          const row = Math.floor(i / 2);
-          const cellW = CANVAS_WIDTH / 2;
-          const cellH = CANVAS_HEIGHT / 2;
-          const targetX = col * cellW;
-          const targetY = row * cellH;
+      canvas.toBlob((blob) => {
+        if (!blob) throw new Error("Error en generaciĂłn de blob");
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `collage_10x15_victor_${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        setIsExporting(false);
+      }, 'image/png');
 
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(targetX, targetY, cellW, cellH);
-          ctx.clip();
-
-          const t = transforms[i];
-          const uiToCanvasRatio = cellW / containerRefs[i].current.offsetWidth;
-          const drawW = photo.width * t.scale * uiToCanvasRatio;
-          const drawH = photo.height * t.scale * uiToCanvasRatio;
-          const centerX = targetX + cellW / 2 + (t.x * uiToCanvasRatio);
-          const centerY = targetY + cellH / 2 + (t.y * uiToCanvasRatio);
-
-          ctx.drawImage(img, centerX - drawW / 2, centerY - drawH / 2, drawW, drawH);
-          ctx.restore();
-          resolve();
-        };
-        img.src = photo.src;
-      });
+    } catch (error) {
+      console.error("Error exportando:", error);
+      setIsExporting(false);
     }
-
-    const url = canvas.toDataURL("image/png");
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "collage_10x15.png";
-    link.click();
-
-    setIsExporting(false);
   };
 
   return (
-    <div className="h-screen flex flex-col text-slate-300 font-sans">
-      <header className="px-4 py-3 border-b border-emerald-500/20 flex justify-between items-center bg-[#0a0a0a]">
-        <h1 className="text-base font-black text-emerald-500 uppercase">Collage 10x15</h1>
+    <div className="h-screen bg-[#050505] text-slate-300 flex flex-col overflow-hidden font-sans">
+      <header className="px-4 py-3 border-b border-[#10b981]/20 flex justify-between items-center bg-[#0a0a0a] shrink-0">
+        <h1 className="text-base font-black tracking-tighter text-[#10b981] italic uppercase drop-shadow-[0_0_8px_rgba(16,185,129,0.4)]">Collage 10x15</h1>
         <button
-          onClick={exportCollage}
+          onClick={(e) => { e.preventDefault(); exportCollage(); }}
           disabled={isExporting || !photos.some(p => p)}
-          className="px-4 py-2 bg-emerald-500 text-black rounded text-xs font-bold"
+          className="px-5 py-2 bg-[#10b981] hover:bg-[#34d399] disabled:bg-slate-800 text-black rounded-lg text-[11px] font-black uppercase transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.3)] active:scale-95"
         >
-          {isExporting ? "Generando..." : "Descargar PNG"}
+          {isExporting ? "Generando..." : <><Download size={14} strokeWidth={3}/> Descargar PNG</>}
         </button>
       </header>
 
-      <main className="flex-1 flex items-center justify-center p-4">
-        <div
-          className="relative bg-black overflow-hidden grid"
-          style={{
-            height: '80vh',
+      <main className="flex-1 flex flex-col items-center justify-center p-3 gap-5 overflow-hidden">
+        <div 
+          className="relative bg-black shadow-[0_0_40px_rgba(0,0,0,0.8)] overflow-hidden border border-slate-900"
+          style={{ 
+            height: 'min(60vh, 480px)', 
             aspectRatio: '2/3',
+            display: 'grid',
             gridTemplateColumns: '1fr 1fr',
             gridTemplateRows: '1fr 1fr'
           }}
         >
           {photos.map((photo, i) => (
-            <div
+            <div 
               key={i}
               ref={containerRefs[i]}
               onMouseDown={(e) => handleDrag(i, e)}
-              onClick={() => setSelectedIndex(i)}
-              className={`relative overflow-hidden cursor-move ${selectedIndex === i ? 'ring-2 ring-emerald-500' : 'opacity-70'}`}
+              onTouchStart={(e) => handleDrag(i, e)}
+              className={`relative overflow-hidden cursor-move select-none transition-all duration-300 ${
+                selectedIndex === i ? 'ring-2 ring-inset ring-[#10b981] z-10 shadow-[inset_0_0_20px_rgba(16,185,129,0.2)]' : 'opacity-60'
+              } bg-[#0d0d0d]`}
             >
               {!photo ? (
-                <div className="absolute inset-0 flex items-center justify-center text-emerald-500 text-xs">
-                  Vacío
+                <div className="absolute inset-0 flex flex-col items-center justify-center opacity-20 text-[#10b981]">
+                  <ImageIcon size={20} />
                 </div>
               ) : (
-                <img
-                  src={photo.src}
+                <img 
+                  src={photo.src} 
+                  alt=""
                   draggable="false"
-                  className="absolute pointer-events-none max-w-none"
+                  className="absolute pointer-events-none max-w-none origin-center"
                   style={{
                     transform: `translate(calc(-50% + ${transforms[i].x}px), calc(-50% + ${transforms[i].y}px)) scale(${transforms[i].scale})`,
-                    top: '50%',
-                    left: '50%'
+                    top: '50%', left: '50%'
                   }}
                 />
               )}
             </div>
           ))}
         </div>
+
+        <div className="w-full max-w-sm bg-[#0a0a0a] rounded-2xl border border-[#10b981]/10 p-5 shadow-2xl mb-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-[#10b981] shadow-[0_0_8px_#10b981] animate-pulse" />
+              <span className="text-[11px] font-black text-[#10b981] uppercase tracking-widest">Ajuste Slot {selectedIndex + 1}</span>
+            </div>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => { const n = [...transforms]; n[selectedIndex] = { ...n[selectedIndex], x:0, y:0, scale: n[selectedIndex].baseScale }; setTransforms(n); }}
+                className="p-2 hover:bg-[#10b981]/10 rounded-full text-slate-400 hover:text-[#10b981] transition-colors"
+              >
+                <RefreshCw size={16} />
+              </button>
+              <button 
+                onClick={() => setPhotos(p => { const n=[...p]; n[selectedIndex]=null; return n; })}
+                className="p-2 hover:bg-red-950/30 rounded-full text-red-500 transition-colors"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            {!photos[selectedIndex] ? (
+              <button 
+                onClick={() => fileInputRef.current.click()}
+                className="flex-1 py-4 bg-[#10b981]/5 border-2 border-dashed border-[#10b981]/20 rounded-xl flex items-center justify-center gap-3 text-xs font-bold text-[#10b981] hover:border-[#10b981] hover:bg-[#10b981]/10 transition-all"
+              >
+                <Upload size={16} /> Cargar Imagen
+              </button>
+            ) : (
+              <div className="flex-1 flex items-center gap-4 bg-[#10b981]/5 p-3 rounded-xl border border-[#10b981]/10">
+                <ZoomIn size={16} className="text-[#10b981]/60" />
+                <input 
+                  type="range" 
+                  min={transforms[selectedIndex].baseScale * 0.5} 
+                  max={transforms[selectedIndex].baseScale * 4} 
+                  step="0.001"
+                  value={transforms[selectedIndex].scale}
+                  onChange={(e) => {
+                    const next = [...transforms];
+                    next[selectedIndex].scale = parseFloat(e.target.value);
+                    setTransforms(next);
+                  }}
+                  className="flex-1 h-1.5 bg-[#10b981]/10 rounded-lg appearance-none cursor-pointer accent-[#10b981]"
+                />
+                <span className="text-[11px] font-mono font-bold text-[#10b981] w-10 text-right">
+                  {(transforms[selectedIndex].scale / transforms[selectedIndex].baseScale).toFixed(1)}x
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
       </main>
 
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
-
-      <div className="p-4 bg-[#0a0a0a]">
-        <button
-          onClick={() => fileInputRef.current.click()}
-          className="w-full py-2 bg-emerald-500 text-black rounded text-xs font-bold"
-        >
-          Cargar Imagen en Slot {selectedIndex + 1}
-        </button>
-      </div>
     </div>
   );
-}
+};
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+export default App;
 
-  </script>
-</body>
-</html>
